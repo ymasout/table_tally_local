@@ -1,9 +1,9 @@
 # 桌台实时累加系统 - 架构文档
 
 > **项目名称**: Table Tally Local
-> **版本**: 1.1.0
+> **版本**: 1.2.0
 > **最后更新**: 2025年2月
-> **技术栈**: Flutter + SQLite + SharedPreferences
+> **技术栈**: Flutter + SQLite + SharedPreferences + ImagePicker
 
 ---
 
@@ -57,6 +57,7 @@
 - ✅ 操作日志与撤销
 - ✅ 设置页面 (桌台数量配置)
 - ✅ 商品管理 (添加/编辑/删除)
+- ✅ 商品图片上传与展示 (新增)
 
 **不包含**:
 - ❌ 语音识别
@@ -93,12 +94,13 @@ dependencies:
   uuid: ^4.3.1              # UUID 生成
   shared_preferences: ^2.2.2 # 本地偏好设置存储
 
+  # 图片处理 (新增)
+  image_picker: ^1.0.7      # 图片选择器
+  path_provider: ^2.1.1     # 应用目录路径
+
   # 音频功能 (预留)
   flutter_sound: ^9.3.3     # 音频录制/播放
   permission_handler: ^11.1.0 # 权限管理
-
-  # 文件系统
-  path_provider: ^2.1.1     # 路径获取
 ```
 
 ### 2.3 支持平台
@@ -302,25 +304,30 @@ int get tableCount                           // 获取当前桌台数量设置
 
 **功能描述**:
 - 展示所有商品列表（按分类分组）
-- 添加新商品
-- 编辑现有商品
-- 删除商品
+- 添加新商品（含图片上传）
+- 编辑现有商品（含图片修改）
+- 删除商品（自动清理图片文件）
 
 **关键组件**:
 ```dart
 class ItemManagementScreen extends StatefulWidget  // 商品管理页面
-class _ItemCard extends StatelessWidget           // 商品卡片
-class _ItemFormDialog extends StatefulWidget      // 商品表单对话框
+class _ItemCard extends StatelessWidget           // 商品卡片（含图片预览）
+class _ItemFormDialog extends StatefulWidget      // 商品表单对话框（含图片选择）
 ```
 
 **商品表单字段**:
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| image | 图片 | 商品图片 (可选) |
 | name | 文本 | 商品名称 (必填) |
 | price | 数字 | 单价 (必填) |
 | unit | 文本 | 单位 (必填) |
 | step | 数字 | 默认步长 (必填) |
 | category | 单选 | 计数类/称重类 |
+
+**图片上传 UI**:
+- 无图片：100x100 灰色背景 + 相机图标 + "点击上传"
+- 有图片：图片预览 + 右上角删除按钮 + 右下角修改图标
 
 **CRUD 操作**:
 ```dart
@@ -331,7 +338,103 @@ Future<void> deleteExistingItem(String itemId) // 删除商品
 
 **删除保护**:
 - 删除前显示确认对话框
-- 删除操作不可撤销
+- 删除商品时自动删除关联图片文件
+
+---
+
+### 4.8 商品图片模块 (Image Support Module)
+
+**文件位置**: `lib/screens/item_management_screen.dart`, `lib/screens/table_detail_screen.dart`
+
+**功能描述**:
+- 商品图片选择与上传
+- 图片持久化存储
+- 商品卡片图片展示
+
+#### 4.8.1 图片上传逻辑
+
+**流程**:
+```
+1. 点击图片区域 → 调用 image_picker (Gallery)
+2. 选择图片 → 获取临时文件路径
+3. 复制到应用目录 → {DocumentsDirectory}/item_images/item_{uuid}.jpg
+4. 保存路径到数据库 → imagePath 字段
+```
+
+**存储路径**:
+```
+{getApplicationDocumentsDirectory()}/item_images/item_{uuid}.jpg
+```
+
+**关键代码**:
+```dart
+// 选择图片
+final XFile? image = await _picker.pickImage(
+  source: ImageSource.gallery,
+  maxWidth: 512,
+  maxHeight: 512,
+  imageQuality: 85,
+);
+
+// 生成唯一文件名
+final fileName = 'item_${_uuid.v4()}.jpg';
+
+// 复制到应用目录
+final appDir = await getApplicationDocumentsDirectory();
+final savedPath = path.join(appDir.path, 'item_images', fileName);
+await File(image.path).copy(savedPath);
+```
+
+#### 4.8.2 图片展示 UI
+
+**商品管理页卡片**:
+- 60x60 圆角图片预览
+- 无图片时显示分类色块 + 图标
+
+**桌台详情页卡片 (外卖 APP 风格)**:
+```
+┌─────────────────────┐
+│                     │
+│    图片区域 (4)      │  ← Flex 4
+│   BoxFit.cover      │
+│                     │
+├─────────────────────┤
+│ 商品名称 (加粗)      │
+│ ¥价格 / 单位        │  ← Flex 5
+│                     │
+│ [−]  数量  [+]      │
+│ 或 [重量] [输入]    │
+└─────────────────────┘
+```
+
+**视觉效果**:
+- 卡片阴影 (elevation: 4)
+- 圆角 (12dp)
+- 图片上圆角，下方直角
+- 文字溢出自动截断
+
+#### 4.8.3 平台兼容性
+
+| 平台 | 图片上传 | 图片展示 | 说明 |
+|------|---------|---------|------|
+| Android | ✅ | ✅ | 需要相册权限 |
+| iOS | ✅ | ✅ | 需要相册权限 |
+| Windows | ✅ | ✅ | - |
+| Web | ❌ | ⚠️ 占位图 | 不支持文件存储 |
+
+#### 4.8.4 权限配置
+
+**Android** (`android/app/src/main/AndroidManifest.xml`):
+```xml
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+```
+
+**iOS** (`ios/Runner/Info.plist`):
+```xml
+<key>NSPhotoLibraryUsageDescription</key>
+<string>需要访问相册以选择商品图片</string>
+```
 
 ---
 
@@ -374,12 +477,18 @@ class ItemModel {
   final double price;       // 单价
   final double step;        // 默认步长
   final String category;    // 分类: 'weighing' | 'counting'
+  final String? imagePath;  // 商品图片路径 (新增，可选)
 }
 ```
 
 **分类说明**:
 - `counting` (计数类): 使用 +/- 按钮，每次增减 step 量
 - `weighing` (称重类): 使用数字键盘，手动输入数量
+
+**图片路径说明**:
+- 存储在应用文档目录下的 `item_images/` 文件夹
+- 文件名格式: `item_{uuid}.jpg`
+- 使用 `hasImage` getter 检查是否有图片
 
 **数据库表**:
 ```sql
@@ -389,9 +498,12 @@ CREATE TABLE items (
   unit TEXT NOT NULL,
   price REAL NOT NULL,
   step REAL NOT NULL,
-  category TEXT NOT NULL CHECK(category IN ('weighing', 'counting'))
+  category TEXT NOT NULL CHECK(category IN ('weighing', 'counting')),
+  image_path TEXT  -- 新增: 图片路径
 )
 ```
+
+**数据库版本**: v2 (从 v1 迁移会自动添加 image_path 列)
 
 ---
 
@@ -778,32 +890,65 @@ HomeScreen
 |------|---------|------|
 | `_TableCard` | home_screen.dart | 桌台卡片 |
 | `_TotalAmountDisplay` | table_detail_screen.dart | 金额显示 |
-| `_LargeItemCard` | table_detail_screen.dart | 商品卡片 |
-| `_ActionButton` | table_detail_screen.dart | +/- 按钮 |
+| `_LargeItemCard` | table_detail_screen.dart | 商品卡片 (外卖APP风格) |
 | `_WeighingKeypadBottomSheet` | table_detail_screen.dart | 称重键盘 |
 | `_KeypadButton` | table_detail_screen.dart | 键盘按键 |
 | `_BottomActionBar` | table_detail_screen.dart | 底部操作栏 |
 | `_CheckoutSummaryScreen` | table_detail_screen.dart | 结账确认页 |
-| `_ItemCard` | item_management_screen.dart | 商品管理卡片 (新增) |
-| `_ItemFormDialog` | item_management_screen.dart | 商品表单对话框 (新增) |
+| `_ItemCard` | item_management_screen.dart | 商品管理卡片 |
+| `_ItemFormDialog` | item_management_screen.dart | 商品表单对话框 |
 
-### 9.2 设计规范
+### 9.2 商品卡片布局 (_LargeItemCard)
+
+**外卖 APP 风格垂直布局**:
+```
+┌─────────────────────┐
+│                     │
+│    图片区域 (4)      │  ← Flex 4: Image.file / 占位图
+│   BoxFit.cover      │
+│                     │
+├─────────────────────┤
+│ 商品名称 (加粗)      │
+│ ¥价格 / 单位        │  ← Flex 5: 商品信息 + 操作区
+│                     │
+│ [−]  数量  [+]      │  ← 计数类
+│ 或 [重量] [输入]    │  ← 称重类
+└─────────────────────┘
+```
+
+**样式规范**:
+- 卡片阴影: elevation: 4, shadowColor: Colors.black26
+- 圆角: 12dp (BorderRadius.circular(12))
+- 图片区域: 上圆角，下方直角 (clipBehavior: Clip.antiAlias)
+- 文字溢出: TextOverflow.ellipsis
+
+### 9.3 图片上传区域 (_ItemFormDialog)
+
+**100x100 上传区域**:
+- 无图片: 灰色背景 + 相机图标 + "点击上传"
+- 有图片: 图片预览 + 删除按钮 + 编辑图标
+
+### 9.4 设计规范
 
 **颜色**:
 - 主色: `Colors.orange`
 - 成功/结账: `Colors.green`
 - 危险/删除: `Colors.red`
 - 金额: `Colors.green.shade700`
+- 称重类: `Colors.blue`
+- 计数类: `Colors.orange`
 
 **字体大小**:
 - 桌号: `headlineSmall` (约 24sp)
 - 金额: `headlineMedium` (约 32sp)
-- 商品名称: 18sp
-- 按钮文字: 16-20sp
+- 商品名称: 15sp (加粗)
+- 价格: 16-18sp
+- 按钮文字: 13-16sp
 
 **响应式**:
 - 手机: 2列网格
 - 平板 (>600px): 4列网格
+- 商品卡片宽高比: 0.75 (垂直布局)
 
 ---
 
@@ -924,6 +1069,30 @@ await db.transaction((txn) async {
 - "使用 C++ 的桌面开发"
 - Windows 10/11 SDK
 
+### 11.6 图片功能注意事项
+
+**存储路径**:
+- 图片存储在应用文档目录：`{getApplicationDocumentsDirectory()}/item_images/`
+- 文件名格式：`item_{uuid}.jpg`
+- ⚠️ 不要使用临时路径，应用重启后图片会丢失
+
+**平台限制**:
+- Web 平台不支持图片上传（使用 `kIsWeb` 检测）
+- Web 平台显示占位图标
+
+**文件清理**:
+- 删除商品时需手动删除关联图片
+- 编辑商品更换图片时需删除旧图片
+
+**权限配置**:
+- Android: `READ_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`
+- iOS: `NSPhotoLibraryUsageDescription`
+
+**图片规格**:
+- 最大尺寸: 512x512
+- 压缩质量: 85%
+- 支持格式: JPG
+
 ---
 
 ## 12. 未来扩展
@@ -935,6 +1104,7 @@ await db.transaction((txn) async {
 | 语音备忘 | 中 | 🔄 占位完成 | Section 3.2.1，待实现录音功能 |
 | 商品管理页面 | 高 | ✅ 已完成 | 添加/编辑/删除商品 |
 | 设置页面 | 中 | ✅ 已完成 | 桌台数量配置 |
+| 商品图片上传 | 高 | ✅ 已完成 | 图片选择、存储、展示 |
 | 数据导出 | 中 | 📋 待开发 | CSV/JSON 格式 |
 | 打印小票 | 低 | 📋 待开发 | 蓝牙/USB 打印机 |
 | 主题设置 | 低 | 📋 待开发 | 深色/浅色模式 |
@@ -974,6 +1144,7 @@ await db.transaction((txn) async {
 
 | 日期 | 版本 | 更新内容 |
 |------|------|---------|
+| 2025-02 | 1.2.0 | 新增图片功能：商品图片上传、存储、展示；UI重构为外卖APP风格卡片 |
 | 2025-02 | 1.1.0 | 新增管理功能：设置页面、商品管理页面、SharedPreferences 持久化 |
 | 2025-02 | 1.0.0 | 初始版本，完成 MVP 功能 |
 

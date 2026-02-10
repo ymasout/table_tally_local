@@ -1,5 +1,11 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:uuid/uuid.dart';
 import '../providers/table_provider.dart';
 import '../models/item_model.dart';
 
@@ -68,6 +74,18 @@ class _ItemManagementScreenState extends State<ItemManagementScreen> {
     );
 
     if (confirmed == true && mounted) {
+      // Delete image file if exists
+      if (item.hasImage && !kIsWeb) {
+        try {
+          final file = File(item.imagePath!);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {
+          // Ignore deletion errors
+        }
+      }
+
       await context.read<TableProvider>().deleteExistingItem(item.itemId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -200,6 +218,9 @@ class _ItemCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
+            // Item image or placeholder
+            _buildItemImage(),
+            const SizedBox(width: 12),
             // Category indicator
             Container(
               width: 4,
@@ -283,6 +304,38 @@ class _ItemCard extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildItemImage() {
+    if (item.hasImage && !kIsWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.file(
+          File(item.imagePath!),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholder(),
+        ),
+      );
+    }
+    return _buildPlaceholder();
+  }
+
+  Widget _buildPlaceholder() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        item.isWeighingItem ? Icons.scale : Icons.fastfood,
+        color: Colors.grey.shade400,
+        size: 28,
+      ),
+    );
+  }
 }
 
 /// Item Form Dialog - 商品表单对话框
@@ -309,7 +362,10 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
   final _stepController = TextEditingController();
 
   String _category = 'counting';
+  String? _imagePath;
   bool _isLoading = false;
+  final ImagePicker _picker = ImagePicker();
+  final _uuid = const Uuid();
 
   @override
   void initState() {
@@ -320,6 +376,7 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
       _unitController.text = widget.item!.unit;
       _stepController.text = widget.item!.step.toString();
       _category = widget.item!.category;
+      _imagePath = widget.item!.imagePath;
     } else {
       _unitController.text = '份';
       _stepController.text = '1';
@@ -333,6 +390,81 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
     _unitController.dispose();
     _stepController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Web 平台暂不支持图片上传')),
+      );
+      return;
+    }
+
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        // Get app documents directory
+        final appDir = await getApplicationDocumentsDirectory();
+        final imageDir = Directory(path.join(appDir.path, 'item_images'));
+
+        // Create directory if not exists
+        if (!await imageDir.exists()) {
+          await imageDir.create(recursive: true);
+        }
+
+        // Generate unique filename
+        final fileName = 'item_${_uuid.v4()}.jpg';
+        final savedPath = path.join(imageDir.path, fileName);
+
+        // Copy file to app directory
+        await File(image.path).copy(savedPath);
+
+        // Delete old image if exists (when editing)
+        if (_imagePath != null) {
+          try {
+            final oldFile = File(_imagePath!);
+            if (await oldFile.exists()) {
+              await oldFile.delete();
+            }
+          } catch (_) {
+            // Ignore deletion errors
+          }
+        }
+
+        setState(() {
+          _imagePath = savedPath;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择图片失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _removeImage() async {
+    // Delete image file if exists
+    if (_imagePath != null && !kIsWeb) {
+      try {
+        final file = File(_imagePath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {
+        // Ignore deletion errors
+      }
+    }
+    setState(() {
+      _imagePath = null;
+    });
   }
 
   Future<void> _handleSave() async {
@@ -351,6 +483,7 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
         unit: _unitController.text.trim(),
         step: step,
         category: _category,
+        imagePath: _imagePath,
       );
 
       await widget.onSave(item);
@@ -387,6 +520,15 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Image picker area (100x100)
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: _buildImagePickerArea(),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               // Name field
               TextFormField(
                 controller: _nameController,
@@ -530,6 +672,92 @@ class _ItemFormDialogState extends State<_ItemFormDialog> {
               : const Text('保存'),
         ),
       ],
+    );
+  }
+
+  /// Build 100x100 image picker area
+  Widget _buildImagePickerArea() {
+    if (_imagePath != null && !kIsWeb) {
+      // Show image preview with edit icon
+      return SizedBox(
+        width: 100,
+        height: 100,
+        child: Stack(
+          children: [
+            // Image preview
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.file(
+                File(_imagePath!),
+                width: 100,
+                height: 100,
+                fit: BoxFit.cover,
+              ),
+            ),
+            // Edit icon overlay
+            Positioned(
+              bottom: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: _pickImage,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(Icons.edit, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+            // Delete button
+            Positioned(
+              top: 4,
+              right: 4,
+              child: GestureDetector(
+                onTap: _removeImage,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 14),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Show placeholder
+    return Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.camera_alt_outlined,
+            size: 32,
+            color: Colors.grey.shade500,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '点击上传',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

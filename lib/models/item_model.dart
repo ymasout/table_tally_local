@@ -7,6 +7,7 @@ class ItemModel {
   final double price;
   final double step; // Default step size for increment/decrement
   final String category; // 'weighing' (称重类) or 'counting' (计数类)
+  final String? imagePath; // Optional path to item image (local file path)
 
   ItemModel({
     required this.itemId,
@@ -15,6 +16,7 @@ class ItemModel {
     required this.price,
     required this.step,
     this.category = 'counting',
+    this.imagePath,
   });
 
   /// Convert from Map (for SQLite)
@@ -26,6 +28,7 @@ class ItemModel {
       price: (map['price'] as num).toDouble(),
       step: (map['step'] as num).toDouble(),
       category: map['category'] as String? ?? 'counting',
+      imagePath: map['image_path'] as String?,
     );
   }
 
@@ -38,6 +41,7 @@ class ItemModel {
       'price': price,
       'step': step,
       'category': category,
+      'image_path': imagePath,
     };
   }
 
@@ -49,6 +53,7 @@ class ItemModel {
     double? price,
     double? step,
     String? category,
+    String? imagePath,
   }) {
     return ItemModel(
       itemId: itemId ?? this.itemId,
@@ -57,6 +62,7 @@ class ItemModel {
       price: price ?? this.price,
       step: step ?? this.step,
       category: category ?? this.category,
+      imagePath: imagePath ?? this.imagePath,
     );
   }
 
@@ -65,6 +71,9 @@ class ItemModel {
 
   /// Check if this is a counting item (simple +/- buttons)
   bool get isCountingItem => category == 'counting';
+
+  /// Check if item has an image
+  bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
 
   /// Format price for display
   String get formattedPrice => price.toStringAsFixed(2);

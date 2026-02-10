@@ -26,7 +26,7 @@ class DatabaseHelper implements StorageService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2, // Updated from 1 to 2 for image_path column
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -52,7 +52,8 @@ class DatabaseHelper implements StorageService {
         unit TEXT NOT NULL,
         price REAL NOT NULL,
         step REAL NOT NULL,
-        category TEXT NOT NULL CHECK(category IN ('weighing', 'counting'))
+        category TEXT NOT NULL CHECK(category IN ('weighing', 'counting')),
+        image_path TEXT
       )
     ''');
 
@@ -144,7 +145,11 @@ class DatabaseHelper implements StorageService {
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Handle future database upgrades
+    // Handle database upgrades
+    if (oldVersion < 2) {
+      // Version 1 -> 2: Add image_path column to items table
+      await db.execute('ALTER TABLE items ADD COLUMN image_path TEXT');
+    }
   }
 
   // ==================== Tables Operations ====================

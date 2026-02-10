@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/table_provider.dart';
@@ -56,7 +58,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                         child: GridView.builder(
                           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 200,
-                            childAspectRatio: 1.2,
+                            childAspectRatio: 0.75,
                             mainAxisSpacing: 16,
                             crossAxisSpacing: 16,
                           ),
@@ -258,8 +260,8 @@ class _TotalAmountDisplay extends StatelessWidget {
   }
 }
 
-/// Large Item Card Widget
-/// Shows item info with big numbers and clear action buttons
+/// Large Item Card Widget - 外卖APP风格卡片
+/// Vertical layout: Top (image) + Bottom (info + actions)
 class _LargeItemCard extends StatelessWidget {
   final ItemModel item;
   final double quantity;
@@ -280,100 +282,212 @@ class _LargeItemCard extends StatelessWidget {
     final isWeighing = item.isWeighingItem;
 
     return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 4,
+      shadowColor: Colors.black26,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Item name
-              Text(
-                item.name,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              // Price per unit
-              Text(
-                '¥${item.formattedPrice}/${item.unit}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const Spacer(),
-              // Current quantity (large display)
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  color: isWeighing ? Colors.blue.shade50 : Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
+        child: Column(
+          children: [
+            // ========== 上半部分: 图片区域 (Flex 4) ==========
+            Expanded(
+              flex: 4,
+              child: _buildImageSection(),
+            ),
+            // ========== 下半部分: 信息 + 操作区域 (Flex 5) ==========
+            Expanded(
+              flex: 5,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // 商品名称 (加粗/截断)
                     Text(
-                      quantity == 0
-                          ? (isWeighing ? '点击输入' : '点击添加')
-                          : (isWeighing ? '${quantity.toStringAsFixed(1)}' : '${quantity.toInt()}'),
-                      style: TextStyle(
-                        fontSize: 36,
+                      item.name,
+                      style: const TextStyle(
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: isWeighing ? Colors.blue.shade700 : Colors.orange.shade700,
+                        height: 1.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    // 大号价格
+                    Text(
+                      '¥${item.formattedPrice}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
                       ),
                     ),
                     Text(
-                      item.unit,
+                      '/${item.unit}',
                       style: TextStyle(
-                        fontSize: 14,
-                        color: (isWeighing ? Colors.blue : Colors.orange).shade700,
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
                       ),
                     ),
+                    const Spacer(),
+                    // 操作区
+                    _buildOperationSection(isWeighing),
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
-              // Action buttons (only for counting items, weighing items use the whole card)
-              if (!isWeighing)
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ActionButton(
-                        icon: Icons.remove,
-                        color: Colors.red,
-                        onPressed: onRemove,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _ActionButton(
-                        icon: Icons.add,
-                        color: Colors.green,
-                        onPressed: onAdd,
-                      ),
-                    ),
-                  ],
-                )
-              else
-                Text(
-                  '点击卡片输入重量',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建图片区域
+  Widget _buildImageSection() {
+    if (item.hasImage && !kIsWeb) {
+      // 显示商品图片
+      return SizedBox(
+        width: double.infinity,
+        child: Image.file(
+          File(item.imagePath!),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
+        ),
+      );
+    }
+    // Fallback: 色块 + Icon
+    return _buildPlaceholderImage();
+  }
+
+  /// 默认占位图
+  Widget _buildPlaceholderImage() {
+    final isWeighing = item.isWeighingItem;
+    return Container(
+      width: double.infinity,
+      color: isWeighing ? Colors.blue.shade50 : Colors.orange.shade50,
+      child: Center(
+        child: Icon(
+          isWeighing ? Icons.scale : Icons.fastfood,
+          size: 40,
+          color: isWeighing ? Colors.blue.shade200 : Colors.orange.shade200,
+        ),
+      ),
+    );
+  }
+
+  /// 构建操作区域
+  Widget _buildOperationSection(bool isWeighing) {
+    if (isWeighing) {
+      // 称重类: 显示重量 + "输入"按钮
+      return Row(
+        children: [
+          // 当前重量
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Text(
+                  quantity == 0 ? '0.0' : quantity.toStringAsFixed(1),
                   style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
                   ),
-                  textAlign: TextAlign.center,
                 ),
-            ],
+              ),
+            ),
           ),
+          const SizedBox(width: 8),
+          // 输入按钮
+          GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                '输入',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else {
+      // 计数类: 显示数量 + 加减按钮
+      return Row(
+        children: [
+          // 减按钮
+          _buildSmallButton(
+            icon: Icons.remove,
+            color: Colors.red,
+            onPressed: quantity > 0 ? onRemove : null,
+          ),
+          const SizedBox(width: 8),
+          // 当前数量
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: Text(
+                  quantity == 0 ? '0' : quantity.toInt().toString(),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // 加按钮
+          _buildSmallButton(
+            icon: Icons.add,
+            color: Colors.green,
+            onPressed: onAdd,
+          ),
+        ],
+      );
+    }
+  }
+
+  /// 构建小按钮
+  Widget _buildSmallButton({
+    required IconData icon,
+    required Color color,
+    VoidCallback? onPressed,
+  }) {
+    final isEnabled = onPressed != null;
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isEnabled ? color : Colors.grey.shade300,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          color: isEnabled ? Colors.white : Colors.grey,
+          size: 22,
         ),
       ),
     );
