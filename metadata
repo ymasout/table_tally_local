@@ -1,0 +1,31 @@
+# This file tracks properties of this Flutter project.
+# Used by Flutter tool to assess capabilities and perform upgrades etc.
+#
+# This file should be version controlled and should not be manually edited.
+
+version:
+  revision: "---------------"
+  channel: "unknown"
+
+project_type: app
+
+# Tracks metadata for the flutter migrate command
+migration:
+  platforms:
+    - platform: root
+      create_revision: "---------------"
+      base_revision: "---------------"
+    - platform: android
+      create_revision: "---------------"
+      base_revision: "---------------"
+    - platform: ios
+      create_revision: "---------------"
+      base_revision: "---------------"
+
+# Tracks user-facing features in the app that are managed by the Flutter tool.
+# These features should be limited to ones that are actionable for users.
+#
+# Examples:
+# - "You can now deep link to your app by using the flutter deep link tool"
+# - "Your app now supports dark mode"
+features: []
