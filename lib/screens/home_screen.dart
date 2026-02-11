@@ -77,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(provider.errorMessage!),
                   ElevatedButton(
                     onPressed: () => provider.initialize(),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -116,45 +116,6 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddTableDialog,
-        label: const Text('新增桌台'),
-        icon: const Icon(Icons.add),
-      ),
-    );
-  }
-
-  void _showAddTableDialog() {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('新增桌台'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: '桌台号',
-            hintText: '请输入桌台号',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              final tableId = int.tryParse(controller.text);
-              if (tableId != null) {
-                context.read<TableProvider>().createTable(tableId);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('确定'),
-          ),
-        ],
       ),
     );
   }

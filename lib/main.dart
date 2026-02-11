@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -13,8 +14,11 @@ void main() async {
   if (kIsWeb) {
     // Use in-memory storage for web
     await MemoryStorage.instance.initialize();
+  } else if (Platform.isAndroid || Platform.isIOS) {
+    // Mobile platforms (Android/iOS) use native sqflite - no FFI needed
+    // The database will be initialized by DatabaseHelper
   } else {
-    // Use SQLite for mobile/desktop
+    // Desktop platforms (Windows, Linux, macOS) use FFI
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }

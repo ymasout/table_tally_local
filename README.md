@@ -1,71 +1,55 @@
-# Table Tally Local
+# 满盆记 (Table Tally Local)
 
-A real-time accounting system built with Flutter, featuring local storage and voice memo capabilities.
+**满盆记** 是一款专为**中小型餐饮店**（如火锅店、自助餐、大排档）设计的**纯本地**桌台管理与记账工具。无需联网，无需服务器，数据完全存储在本地设备（手机/平板）上，安全可靠。
 
-## Features
+## 🌟 核心特色
 
-- 💰 **Transaction Management**: Add, update, and delete financial transactions
-- 💾 **Local Storage**: SQLite database for offline data persistence
-- 🎤 **Voice Memos**: Record and attach voice notes to transactions (coming soon)
-- 📊 **Balance Tracking**: Real-time balance calculation
-- 📱 **Cross-platform**: Supports Android and iOS
+*   **⚡ 纯本地运行**：基于 SQLite 数据库，无网络依赖，断网也能正常营业，数据隐私绝对安全。
+*   **⚖️ 灵活商品支持**：
+    *   **计数类商品**（酒水、米饭）：支持一键 `+` `-` 操作。
+    *   **称重类商品**（酸菜鱼、现切肉）：支持**直接输入最终重量**（如 3.5kg），系统自动计算差值并记录，告别繁琐计算。
+*   **📱 极简操作界面**：
+    *   **可视化桌台**：首页网格化展示所有桌台，**空闲**（白色）与**用餐中**（橙色）状态一目了然。
+    *   **外卖风点餐页**：大图展示商品，半透明信息浮层，操作体验流畅自然。
+*   **� 详尽操作日志**：
+    *   每一次加菜、减菜、改重量都有精确到秒的日志记录。
+    *   **智能结账分割**：每次结账后自动在日志中插入分割线，不同客人的记录清晰可查，避免账务纠纷。
+*   **💰 快捷结账**：一键查看当前账单明细，确认后自动清空桌台状态，准备迎接下一波客人。
 
-## Tech Stack
+## 适用场景
 
-- **Framework**: Flutter
-- **State Management**: Provider
-- **Local Database**: SQLite (sqflite)
-- **Utilities**: intl (currency/date formatting), uuid (ID generation)
-- **Audio**: flutter_sound, permission_handler
-- **File System**: path_provider
+*   **火锅店 / 串串香**：需要频繁加菜、称重的场景。
+*   **按斤收费的餐馆**：如酸菜鱼、烤鱼、麻辣烫。
+*   **大排档 / 小炒店**：需要快速记账、无需复杂后台管理的店铺。
+*   **无网络环境**：临时摊位、网络信号差的地下商铺。
 
-## Getting Started
+## 🚀 主要功能
 
-### Prerequisites
+1.  **桌台管理**：自定义桌台数量（1-100桌），实时查看各桌消费金额。
+2.  **菜单管理**：
+    *   支持添加图片（本地相册）。
+    *   设置商品名称、价格、单位（份/kg/斤/瓶等）。
+    *   区分计数/称重类型。
+3.  **点餐记账**：
+    *   点击桌台进入详情。
+    *   计数商品点 `+` 号。
+    *   称重商品点 `输入`，填入电子秤上的数字即可。
+4.  **账单查阅**：右上角随时查看当前明细和操作流水。
+5.  **数据安全**：所有数据存储在本地 `SQLite` 数据库中。
 
-1. Install Flutter SDK (https://flutter.dev/docs/get-started/install)
-2. Ensure you have Android Studio or Xcode installed
-3. Run `flutter doctor` to verify your setup
+## 🛠️ 技术栈
 
-### Installation
+*   **框架**：Flutter (Dart)
+*   **存储**：SQLite (sqflite) / Memory (Web)
+*   **架构**：Provider 状态管理
+*   **兼容性**：Android 5.0+ (API 21+)
 
-1. Navigate to the project directory:
-   ```bash
-   cd table_tally_local
-   ```
+## 📦 安装与使用
 
-2. Install dependencies:
-   ```bash
-   flutter pub get
-   ```
+1.  下载最新的 `app-release.apk`。
+2.  安装到 Android 平板或手机。
+3.  首次进入，点击右上角设置图标，添加您的商品菜单。
+4.  开始营业！
 
-3. Run the app:
-   ```bash
-   flutter run
-   ```
-
-## Project Structure
-
-```
-lib/
-├── main.dart                 # App entry point
-├── models/
-│   └── transaction_model.dart
-├── providers/
-│   └── transaction_provider.dart
-├── screens/
-│   └── home_screen.dart
-├── services/
-│   └── database_service.dart
-└── utils/
-```
-
-## Usage
-
-1. **Add Transaction**: Tap the + button to add a new transaction
-2. **View Balance**: Current balance is displayed in the app bar
-3. **Transaction History**: View all transactions sorted by date
-
-## License
-
-MIT License
+---
+*Table Tally Local - 让记账回归简单*

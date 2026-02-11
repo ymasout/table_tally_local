@@ -108,7 +108,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
       builder: (context) => _WeighingKeypadBottomSheet(
         item: item,
         onConfirm: (quantity) {
-          provider.addCustomQuantity(widget.tableId, item.itemId, quantity);
+          provider.setTableItemQuantity(widget.tableId, item.itemId, quantity);
           Navigator.pop(context);
         },
       ),
@@ -121,6 +121,15 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
     final logs = provider.getTableLogs(widget.tableId);
     final total = provider.getTableTotal(widget.tableId);
 
+    // 辅助函数：根据 itemId 查找商品名称
+    String getItemName(String itemId) {
+      try {
+        return provider.items.firstWhere((i) => i.itemId == itemId).name;
+      } catch (_) {
+        return itemId; // 找不到就显示原始 ID
+      }
+    }
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -131,7 +140,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
             shrinkWrap: true,
             children: [
               if (tableItems.isNotEmpty) ...[
-                const Text('商品明细', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('商品明细', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 ...tableItems.map((item) {
                   final itemModel = provider.items.firstWhere(
@@ -146,6 +155,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                   );
                   final subtotal = item.quantity * itemModel.price;
                   return ListTile(
+                    dense: true,
                     title: Text(itemModel.name),
                     subtitle: Text('${item.quantity} ${itemModel.unit} × ¥${itemModel.price}'),
                     trailing: Text(
@@ -155,22 +165,72 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                   );
                 }),
                 const Divider(),
-                Text(
-                  '总计: ¥${total.toStringAsFixed(2)}',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ListTile(
+                  dense: true,
+                  title: const Text('总计', style: TextStyle(fontWeight: FontWeight.bold)),
+                  trailing: Text(
+                    '¥${total.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
                 ),
               ] else
-                const Text('暂无商品'),
-              const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      '当前桌台暂无商品',
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                    ),
+                  ),
+                ),
               if (logs.isNotEmpty) ...[
-                const Text('操作日志', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                const Text('最近操作', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
-                ...logs.take(10).map((log) => ListTile(
-                      dense: true,
-                      leading: Text(log.formattedDelta),
-                      title: Text(log.itemId),
-                      subtitle: Text(log.formattedTimestamp),
-                    )),
+                ...logs.take(30).map((log) {
+                  // 结账分割线
+                  if (log.itemId == '__checkout__') {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Expanded(child: Divider(color: Colors.orange.shade300, thickness: 1)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              '已结账 ${log.formattedTimestamp}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange.shade600,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          Expanded(child: Divider(color: Colors.orange.shade300, thickness: 1)),
+                        ],
+                      ),
+                    );
+                  }
+                  // 普通操作日志
+                  return ListTile(
+                    dense: true,
+                    leading: Text(
+                      log.formattedDelta,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: log.formattedDelta.startsWith('+')
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    ),
+                    title: Text(getItemName(log.itemId)),
+                    subtitle: Text(log.formattedTimestamp),
+                  );
+                }),
               ],
             ],
           ),
@@ -180,48 +240,11 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('关闭'),
           ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showCheckoutConfirmDialog();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('结账清台'),
-          ),
         ],
       ),
     );
   }
 
-  void _showCheckoutConfirmDialog() {
-    final provider = context.read<TableProvider>();
-    final total = provider.getTableTotal(widget.tableId);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('确认结账'),
-        content: Text('确认结账 ¥${total.toStringAsFixed(2)} 并清空桌台吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              provider.clearTable(widget.tableId);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('结账成功，桌台已清空')),
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('确认结账'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Total Amount Display Widget
@@ -234,7 +257,7 @@ class _TotalAmountDisplay extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.green.shade50,
         border: Border(bottom: BorderSide(color: Colors.green.shade200, width: 1)),
@@ -243,13 +266,13 @@ class _TotalAmountDisplay extends StatelessWidget {
         children: [
           const Text(
             '当前金额',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+            style: TextStyle(fontSize: 14, color: Colors.grey),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             '¥${amount.toStringAsFixed(2)}',
             style: const TextStyle(
-              fontSize: 36,
+              fontSize: 32,
               fontWeight: FontWeight.bold,
               color: Colors.green,
             ),
@@ -288,22 +311,36 @@ class _LargeItemCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Column(
+        child: Stack(
           children: [
-            // ========== 上半部分: 图片区域 (Flex 4) ==========
-            Expanded(
-              flex: 4,
+            // ========== 底层: 图片铺满整个卡片 ==========
+            Positioned.fill(
               child: _buildImageSection(),
             ),
-            // ========== 下半部分: 信息 + 操作区域 (Flex 5) ==========
-            Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
+            // ========== 上层: 半透明信息浮层（底部） ==========
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.85),
+                      Colors.white.withOpacity(0.95),
+                    ],
+                    stops: const [0.0, 0.3, 1.0],
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 商品名称 (加粗/截断)
+                    // 商品名称
                     Text(
                       item.name,
                       style: const TextStyle(
@@ -314,24 +351,17 @@ class _LargeItemCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
-                    // 大号价格
+                    const SizedBox(height: 2),
+                    // 价格 + 单位
                     Text(
-                      '¥${item.formattedPrice}',
+                      '¥${item.formattedPrice}/${item.unit}',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: Colors.green.shade700,
                       ),
                     ),
-                    Text(
-                      '/${item.unit}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const Spacer(),
+                    const SizedBox(height: 6),
                     // 操作区
                     _buildOperationSection(isWeighing),
                   ],
@@ -347,12 +377,15 @@ class _LargeItemCard extends StatelessWidget {
   /// 构建图片区域
   Widget _buildImageSection() {
     if (item.hasImage && !kIsWeb) {
-      // 显示商品图片
-      return SizedBox(
+      // 显示商品图片（不裁切，顶部对齐）
+      return Container(
+        color: Colors.grey.shade100,
         width: double.infinity,
+        height: double.infinity,
         child: Image.file(
           File(item.imagePath!),
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
+          alignment: Alignment.topCenter,
           errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
         ),
       );
@@ -781,7 +814,8 @@ class _BottomActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.read<TableProvider>();
+    // 使用 watch 监听状态变化，实时更新金额和按钮状态
+    final provider = context.watch<TableProvider>();
     final total = provider.getTableTotal(tableId);
 
     return Container(
@@ -829,7 +863,7 @@ class _BottomActionBar extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: total > 0
                     ? () {
-                        Navigator.of(context).pushReplacement(
+                        Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => _CheckoutSummaryScreen(tableId: tableId),
                           ),
@@ -872,7 +906,7 @@ class _CheckoutSummaryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.read<TableProvider>();
+    final provider = context.watch<TableProvider>();
     final tableItems = provider.getTableItems(tableId);
     final total = provider.getTableTotal(tableId);
 
@@ -937,13 +971,17 @@ class _CheckoutSummaryScreen extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () {
-                  provider.clearTable(tableId);
-                  Navigator.of(context).pop();
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('结账成功，桌台已清空')),
-                  );
+                onPressed: () async {
+                  await provider.clearTable(tableId);
+                  if (context.mounted) {
+                    // pop 结账明细页 → 回到桌台详情页
+                    Navigator.of(context).pop();
+                    // pop 桌台详情页 → 回到主页
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('结账成功，桌台已清空')),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
@@ -953,7 +991,7 @@ class _CheckoutSummaryScreen extends StatelessWidget {
                 ),
                 child: const Text(
                   '确认结账并清台',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
             ),

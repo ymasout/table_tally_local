@@ -80,9 +80,11 @@ class TableProvider with ChangeNotifier {
     }
   }
 
-  /// Load all tables
+  /// Load all tables (filtered by _tableCount)
   Future<void> _loadTables() async {
-    _tables = await _db.getAllTables();
+    final allTables = await _db.getAllTables();
+    // Only show tables within the configured count
+    _tables = allTables.where((t) => t.tableId <= _tableCount).toList();
 
     // Load data for each table
     for (final table in _tables) {
@@ -130,7 +132,14 @@ class TableProvider with ChangeNotifier {
     _setLoading(true);
     try {
       await _db.clearTable(tableId);
-      await _loadTables();
+      
+      // 直接更新内存中的桌台状态
+      final index = _tables.indexWhere((t) => t.tableId == tableId);
+      if (index != -1) {
+        _tables[index] = _tables[index].copyWith(status: 'idle', updatedAt: DateTime.now());
+      }
+      
+      await loadTableData(tableId);
       _clearError();
     } catch (e) {
       _setError('Failed to clear table: $e');
@@ -150,6 +159,13 @@ class TableProvider with ChangeNotifier {
       }
 
       await _db.updateTableItemQuantity(tableId, itemId, item.step);
+      
+      // 直接更新内存中的桌台状态为使用中
+      final index = _tables.indexWhere((t) => t.tableId == tableId);
+      if (index != -1 && _tables[index].status == 'idle') {
+        _tables[index] = _tables[index].copyWith(status: 'in_use', updatedAt: DateTime.now());
+      }
+
       await loadTableData(tableId);
       _clearError();
     } catch (e) {
@@ -170,7 +186,22 @@ class TableProvider with ChangeNotifier {
       }
 
       await _db.updateTableItemQuantity(tableId, itemId, -item.step);
+      
+      // 更新桌台状态（如果所有商品都没了，status 会由 total 决定，这里简单起见设为 in_use，
+      // 因为只要有操作通常就不是 idle。如果减到0需要在 loadTableData 后检查 total）
+      final index = _tables.indexWhere((t) => t.tableId == tableId);
+      if (index != -1) {
+        _tables[index] = _tables[index].copyWith(updatedAt: DateTime.now());
+      }
+
       await loadTableData(tableId);
+      
+      // 检查是否变为空闲（total == 0）
+      if (getTableTotal(tableId) == 0 && index != -1) {
+         // 这里可以根据业务逻辑决定是否自动变回 idle，或者保持 in_use 直到结账。
+         // 目前逻辑是结账才变 idle，所以这里不强制改回 idle。
+      }
+
       _clearError();
     } catch (e) {
       _setError('Failed to remove item: $e');
@@ -179,22 +210,45 @@ class TableProvider with ChangeNotifier {
     }
   }
 
-  /// Add custom quantity to table (for weighing items)
-  Future<void> addCustomQuantity(
+  /// Set table item quantity (absolute value) - 用于称重类直接设置重量
+  Future<void> setTableItemQuantity(
     int tableId,
     String itemId,
-    double quantity,
+    double newQuantity,
   ) async {
     _setLoading(true);
     try {
-      await _db.updateTableItemQuantity(tableId, itemId, quantity);
-      await loadTableData(tableId);
+      // 1. Get current quantity
+      final currentItem = await _db.getTableItem(tableId, itemId);
+      final currentQuantity = currentItem?.quantity ?? 0.0;
+      
+      // 2. Calculate delta
+      final delta = newQuantity - currentQuantity;
+      
+      // 3. Only update if there is a change
+      if (delta != 0) {
+        await _db.updateTableItemQuantity(tableId, itemId, delta);
+        
+        // 更新状态
+        final index = _tables.indexWhere((t) => t.tableId == tableId);
+        if (index != -1 && _tables[index].status == 'idle') {
+          _tables[index] = _tables[index].copyWith(status: 'in_use', updatedAt: DateTime.now());
+        }
+        
+        await loadTableData(tableId);
+      }
+      
       _clearError();
     } catch (e) {
-      _setError('Failed to add quantity: $e');
+      _setError('Failed to set quantity: $e');
     } finally {
       _setLoading(false);
     }
+  }
+  
+  // Keep the old method for compatibility if needed, but we will use setTableItemQuantity
+  Future<void> addCustomQuantity(int tableId, String itemId, double quantity) async {
+     await setTableItemQuantity(tableId, itemId, quantity);
   }
 
   /// Undo last operation for a table
@@ -366,17 +420,29 @@ class TableProvider with ChangeNotifier {
       await prefs.setInt(_tableCountKey, newCount);
       _tableCount = newCount;
 
-      // Get current table IDs
-      final existingTableIds = _tables.map((t) => t.tableId).toSet();
+      // Get all existing tables from database
+      final allTables = await _db.getAllTables();
+      final existingTableIds = allTables.map((t) => t.tableId).toSet();
 
-      // Create missing tables
+      // Create missing tables (if increasing count)
       for (int i = 1; i <= newCount; i++) {
         if (!existingTableIds.contains(i)) {
           await _db.createTable(i);
         }
       }
 
-      // Reload tables
+      // Delete excess tables (if decreasing count)
+      // Only delete tables that have no active orders (total == 0)
+      for (final table in allTables) {
+        if (table.tableId > newCount) {
+          final total = await _db.getTableTotal(table.tableId);
+          if (total == 0) {
+            await _db.clearTable(table.tableId);
+          }
+        }
+      }
+
+      // Reload tables (will be filtered by _tableCount)
       await _loadTables();
       _clearError();
 

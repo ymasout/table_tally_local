@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/table_model.dart';
 import '../models/item_model.dart';
 import '../models/log_model.dart';
@@ -19,17 +22,43 @@ class DatabaseHelper implements StorageService {
     return _database!;
   }
 
-  /// Initialize SQLite database
+  /// Initialize SQLite database with platform-specific handling
   Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'table_tally.db');
+    String path;
 
-    return await openDatabase(
-      path,
-      version: 2, // Updated from 1 to 2 for image_path column
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Mobile platforms: Use path_provider for safe app directory
+      final directory = await getApplicationDocumentsDirectory();
+      path = join(directory.path, 'table_tally.db');
+
+      // Ensure directory exists
+      try {
+        await Directory(dirname(path)).create(recursive: true);
+      } catch (_) {}
+    } else {
+      // Desktop platforms: Use FFI
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, 'table_tally.db');
+    }
+
+    // Open database with appropriate factory
+    if (Platform.isAndroid || Platform.isIOS) {
+      return await openDatabase(
+        path,
+        version: 2,
+        onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+      );
+    } else {
+      return await databaseFactoryFfi.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 2,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade,
+        ),
+      );
+    }
   }
 
   /// Create all tables (Section 5 schema)
@@ -207,6 +236,13 @@ class DatabaseHelper implements StorageService {
   Future<void> clearTable(int tableId) async {
     final db = await database;
     await db.transaction((txn) async {
+      // 插入结账标记日志（用于分隔不同客人的操作记录）
+      await txn.insert('ops_log', {
+        'table_id': tableId,
+        'item_id': '__checkout__',
+        'delta': 0,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
       // Update table status
       await txn.update(
         'tables',

@@ -69,6 +69,15 @@ class MemoryStorage implements StorageService {
   }
 
   Future<void> clearTable(int tableId) async {
+    // 插入结账标记日志（用于分隔不同客人的操作记录）
+    _logs.add(LogModel(
+      id: _logIdCounter++,
+      tableId: tableId,
+      itemId: '__checkout__',
+      delta: 0,
+      timestamp: DateTime.now(),
+    ));
+
     // Update table status
     final table = _tables[tableId];
     if (table != null) {

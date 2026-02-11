@@ -182,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '提示: 增加 will 添加新桌台，减少将保留现有数据',
+              '提示: 减少桌台数时，有未结账订单的桌台会保留',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
             ),
           ],
