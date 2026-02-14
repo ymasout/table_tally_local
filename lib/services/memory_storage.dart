@@ -69,12 +69,15 @@ class MemoryStorage implements StorageService {
   }
 
   Future<void> clearTable(int tableId) async {
-    // 插入结账标记日志（用于分隔不同客人的操作记录）
+    // 1. 获取当前金额（清空前）
+    final totalAmount = await getTableTotal(tableId);
+
+    // 2. 插入结账标记日志（把总金额存入 delta 字段）
     _logs.add(LogModel(
       id: _logIdCounter++,
       tableId: tableId,
       itemId: '__checkout__',
-      delta: 0,
+      delta: totalAmount, // 这里复用 delta 字段存储结账金额
       timestamp: DateTime.now(),
     ));
 
@@ -138,10 +141,15 @@ class MemoryStorage implements StorageService {
       );
     } else {
       // Update existing quantity
-      _tableItems[key] = existing.copyWith(
-        quantity: existing.quantity + delta,
-        updatedAt: now,
-      );
+      final newQty = existing.quantity + delta;
+      if (newQty <= 0) {
+        _tableItems.remove(key);
+      } else {
+        _tableItems[key] = existing.copyWith(
+          quantity: newQty,
+          updatedAt: now,
+        );
+      }
     }
 
     // Log the operation

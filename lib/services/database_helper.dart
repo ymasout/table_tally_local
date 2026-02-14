@@ -236,14 +236,28 @@ class DatabaseHelper implements StorageService {
   Future<void> clearTable(int tableId) async {
     final db = await database;
     await db.transaction((txn) async {
-      // 插入结账标记日志（用于分隔不同客人的操作记录）
+      // 1. 计算当前总金额（在清空前）
+      final result = await txn.rawQuery('''
+        SELECT SUM(ti.quantity * i.price) as total
+        FROM table_items ti
+        INNER JOIN items i ON ti.item_id = i.item_id
+        WHERE ti.table_id = ?
+      ''', [tableId]);
+      
+      double totalAmount = 0.0;
+      if (result.isNotEmpty && result.first['total'] != null) {
+        totalAmount = (result.first['total'] as num).toDouble();
+      }
+
+      // 2. 插入结账标记日志（把总金额存入 delta 字段）
       await txn.insert('ops_log', {
         'table_id': tableId,
         'item_id': '__checkout__',
-        'delta': 0,
+        'delta': totalAmount, // 这里复用 delta 字段存储结账金额
         'timestamp': DateTime.now().toIso8601String(),
       });
-      // Update table status
+
+      // 3. Update table status
       await txn.update(
         'tables',
         {
@@ -253,7 +267,8 @@ class DatabaseHelper implements StorageService {
         where: 'table_id = ?',
         whereArgs: [tableId],
       );
-      // Clear all items for this table
+
+      // 4. Clear all items for this table
       await txn.delete(
         'table_items',
         where: 'table_id = ?',
@@ -363,15 +378,27 @@ class DatabaseHelper implements StorageService {
       } else {
         // Update existing quantity
         final currentQty = (existing.first['quantity'] as num).toDouble();
-        await txn.update(
-          'table_items',
-          {
-            'quantity': currentQty + delta,
-            'updated_at': now,
-          },
-          where: 'table_id = ? AND item_id = ?',
-          whereArgs: [tableId, itemId],
-        );
+        final newQty = currentQty + delta;
+        
+        if (newQty <= 0) {
+          // Delete record if quantity is 0 or less
+          await txn.delete(
+            'table_items',
+            where: 'table_id = ? AND item_id = ?',
+            whereArgs: [tableId, itemId],
+          );
+        } else {
+          // Update quantity
+          await txn.update(
+            'table_items',
+            {
+              'quantity': newQty,
+              'updated_at': now,
+            },
+            where: 'table_id = ? AND item_id = ?',
+            whereArgs: [tableId, itemId],
+          );
+        }
       }
 
       // Log the operation

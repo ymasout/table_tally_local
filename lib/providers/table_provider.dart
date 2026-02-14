@@ -198,8 +198,9 @@ class TableProvider with ChangeNotifier {
       
       // 检查是否变为空闲（total == 0）
       if (getTableTotal(tableId) == 0 && index != -1) {
-         // 这里可以根据业务逻辑决定是否自动变回 idle，或者保持 in_use 直到结账。
-         // 目前逻辑是结账才变 idle，所以这里不强制改回 idle。
+         _tables[index] = _tables[index].copyWith(status: 'idle', updatedAt: DateTime.now());
+         // 如果数据库也需要更新状态为 idle，可以在这里调用 updateTableStatus
+         await _db.updateTableStatus(tableId, 'idle');
       }
 
       _clearError();
@@ -231,11 +232,25 @@ class TableProvider with ChangeNotifier {
         
         // 更新状态
         final index = _tables.indexWhere((t) => t.tableId == tableId);
-        if (index != -1 && _tables[index].status == 'idle') {
-          _tables[index] = _tables[index].copyWith(status: 'in_use', updatedAt: DateTime.now());
-        }
         
+        // 先加载最新数据（可能删掉了商品）
         await loadTableData(tableId);
+        
+        // 检查现在的总金额
+        if (getTableTotal(tableId) == 0) {
+           // 变回 idle
+           if (index != -1) {
+             _tables[index] = _tables[index].copyWith(status: 'idle', updatedAt: DateTime.now());
+           }
+           await _db.updateTableStatus(tableId, 'idle');
+        } else {
+           // 变为 in_use
+           if (index != -1 && _tables[index].status == 'idle') {
+             _tables[index] = _tables[index].copyWith(status: 'in_use', updatedAt: DateTime.now());
+             // 注意：status update已经在 updateTableItemQuantity 里做了（如果是添加的话），
+             // 但如果是减到非0，可能不需要变动。这里保持简单即可。
+           }
+        }
       }
       
       _clearError();

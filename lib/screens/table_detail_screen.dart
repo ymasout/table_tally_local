@@ -202,7 +202,7 @@ class _TableDetailScreenState extends State<TableDetailScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             child: Text(
-                              '已结账 ${log.formattedTimestamp}',
+                              '已结账 ${log.formattedTimestamp}  金额: ¥${log.delta.toStringAsFixed(2)}',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.orange.shade600,
@@ -598,8 +598,9 @@ class _WeighingKeypadBottomSheetState extends State<_WeighingKeypadBottomSheet> 
   }
 
   void _handleConfirm() {
+    if (_controller.text.isEmpty) return;
     final quantity = double.tryParse(_controller.text);
-    if (quantity != null && quantity > 0) {
+    if (quantity != null && quantity >= 0) {
       widget.onConfirm(quantity);
     }
   }
@@ -660,13 +661,23 @@ class _WeighingKeypadBottomSheetState extends State<_WeighingKeypadBottomSheet> 
                   border: Border.all(color: Colors.grey.shade300),
                 ),
                 child: Center(
-                  child: Text(
-                    _controller.text.isEmpty ? '0' : _controller.text,
-                    style: const TextStyle(
-                      fontSize: 40,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: _controller.text.isEmpty
+                      ? Text(
+                          '请输入重量',
+                          style: TextStyle(
+                            fontSize: 24,
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : Text(
+                          _controller.text,
+                          style: const TextStyle(
+                            fontSize: 48,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
                 ),
               ),
             ),
